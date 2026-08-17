@@ -1,0 +1,21 @@
+# Build output
+**/bin/
+**/obj/
+dist/
+*.dll
+*.pdb
+
+# Local reverse-engineering and PoC material
+.analysis-tools/
+.poc-staging/
+
+# IDE and user files
+.vs/
+.vscode/
+*.user
+*.suo
+
+# Runtime files
+Latest.log
+NocturneKeyboardInput.cfg
+name-response.txt
