@@ -1,5 +1,7 @@
 # SMT3HD Nocturne Keyboard Input
 
+> 開発者向け: Steam Big Pictureのゲームパッド文字入力を安全に利用する実証済みブリッジは、[`experiments/SteamTextInputPoC`](experiments/SteamTextInputPoC/)にあります。日本語入力・全角スペース・連続起動・取消を実機確認済みです。
+
 Steam版『真・女神転生III NOCTURNE HD REMASTER』の主人公名を、Windowsの日本語IMEで入力するMelonLoader MODです。
 
 ゲーム本来の文字パレットには存在しない文字も、姓・名・通称の入力完了後にゲーム内の名前データへ反映します。初期値はドラマCD版の主人公名「嘉嶋 尚紀」、通称「人修羅」です。
