@@ -12,7 +12,7 @@ using MelonLoader;
 using MelonLoader.Utils;
 using UnityEngine;
 
-[assembly: MelonInfo(typeof(NocturneKeyboardInput.NocturneKeyboardInputMod), "Nocturne Keyboard Input", "0.18.2-auto-yes-quiet", "Gray Ghost")]
+[assembly: MelonInfo(typeof(NocturneKeyboardInput.NocturneKeyboardInputMod), "Nocturne Keyboard Input", "0.18.3-session-scope", "Gray Ghost")]
 [assembly: MelonGame(null, "smt3hd")]
 
 namespace NocturneKeyboardInput
@@ -28,6 +28,9 @@ namespace NocturneKeyboardInput
         private int _postNameFrames;
         private int _lastObservedEntryType = -1;
         private bool _dummyArmed;
+        private sbyte? _armedTargetNo;
+        private sbyte? _armedEntryMode;
+        private string _lastIgnoredSession = "";
         private string _stageKey = "";
         private int _stageStableFrames;
         private int _lastCount = -1;
@@ -50,7 +53,7 @@ namespace NocturneKeyboardInput
         {
             LoadOrCreateConfig();
             HarmonyInstance.PatchAll(typeof(NocturneKeyboardInputMod).Assembly);
-            LoggerInstance.Msg("[NocturneKeyboardInput] Loaded quiet automatic-YES v0.18.2");
+            LoggerInstance.Msg("[NocturneKeyboardInput] Loaded session-scoped automatic-YES v0.18.3");
             LoggerInstance.Msg($"[NocturneKeyboardInput] Target names: Surname=\"{_surname}\", GivenName=\"{_givenName}\", Nickname=\"{_nickname}\"");
             LoggerInstance.Msg("[NocturneKeyboardInput] At the first surname palette, keep the cursor on a normal character and press F8 to open the Japanese IME input window.");
         }
@@ -75,12 +78,16 @@ namespace NocturneKeyboardInput
                         _lastObservedEntryType = work.EntryType;
                         ObserveImeState(work);
                     }
-                    UpdateGuardedFinalConfirm(work);
-                    if (_dummyArmed) UpdateGuardedDummyInput(work);
-                    if (work.EntryType == 2)
+                    bool sessionInScope = IsArmedSessionScope(work);
+                    if (sessionInScope)
                     {
-                        _nicknameScreenObserved = true;
-                        _postNameFrames = 0;
+                        UpdateGuardedFinalConfirm(work);
+                        UpdateGuardedDummyInput(work);
+                        if (work.EntryType == 2)
+                        {
+                            _nicknameScreenObserved = true;
+                            _postNameFrames = 0;
+                        }
                     }
                     return;
                 }
@@ -178,6 +185,9 @@ namespace NocturneKeyboardInput
                 return;
             }
             _dummyArmed = true;
+            _armedTargetNo = null;
+            _armedEntryMode = null;
+            _lastIgnoredSession = "";
             _nicknameScreenObserved = false;
             _finalNamesApplied = false;
             _postNameFrames = 0;
@@ -186,6 +196,37 @@ namespace NocturneKeyboardInput
             ResetDummyStageTracking();
             SaveConfig();
             LoggerInstance.Msg($"[NocturneKeyboardInput][WINDOW] External values accepted and armed: Surname=\"{_surname}\", GivenName=\"{_givenName}\", Nickname=\"{_nickname}\"");
+        }
+
+        private bool IsArmedSessionScope(nmeData_t work)
+        {
+            if (!_dummyArmed) return false;
+
+            if (!_armedTargetNo.HasValue || !_armedEntryMode.HasValue)
+            {
+                _armedTargetNo = work.TargetNo;
+                _armedEntryMode = work.EntryMode;
+                _lastIgnoredSession = "";
+                LoggerInstance.Msg($"[NocturneKeyboardInput][SESSION] Armed TargetNo={work.TargetNo} EntryMode={work.EntryMode}");
+                return true;
+            }
+
+            if (work.TargetNo == _armedTargetNo.Value && work.EntryMode == _armedEntryMode.Value)
+            {
+                _lastIgnoredSession = "";
+                return true;
+            }
+
+            string ignored = $"{work.TargetNo}:{work.EntryMode}";
+            if (_lastIgnoredSession != ignored)
+            {
+                _lastIgnoredSession = ignored;
+                LoggerInstance.Warning(
+                    $"[NocturneKeyboardInput][SESSION] Ignored different name-entry target: " +
+                    $"CurrentTargetNo={work.TargetNo} CurrentEntryMode={work.EntryMode} " +
+                    $"ArmedTargetNo={_armedTargetNo.Value} ArmedEntryMode={_armedEntryMode.Value}");
+            }
+            return false;
         }
 
         private void SaveConfig()
@@ -354,9 +395,26 @@ namespace NocturneKeyboardInput
 
         private void AbortDummyInput(string reason)
         {
-            _dummyArmed = false;
-            ResetDummyStageTracking();
+            DisarmAutomationSession();
             LoggerInstance.Error($"[NocturneKeyboardInput][DUMMY-POC] Aborted safely: {reason}");
+        }
+
+        private void CompleteAutomationSession()
+        {
+            DisarmAutomationSession();
+            LoggerInstance.Msg("[NocturneKeyboardInput][SESSION] Completed and disarmed.");
+        }
+
+        private void DisarmAutomationSession()
+        {
+            _dummyArmed = false;
+            _armedTargetNo = null;
+            _armedEntryMode = null;
+            _lastIgnoredSession = "";
+            _confirmRequested = false;
+            _confirmStableFrames = 0;
+            ResetDummyStageTracking();
+            CommonInputPatch.ClearPending();
         }
 
         private void ResetDummyStageTracking()
@@ -454,6 +512,7 @@ namespace NocturneKeyboardInput
                     !HasSameLength("Nickname", oldNickname, _nickname))
                 {
                     _finalNamesApplied = true;
+                    DisarmAutomationSession();
                     LoggerInstance.Error("[NocturneKeyboardInput] Name replacement cancelled. Enter dummy names with exactly the same character lengths as the configured names.");
                     return;
                 }
@@ -463,6 +522,7 @@ namespace NocturneKeyboardInput
                 if (nameCountRow.Length < 2)
                 {
                     _finalNamesApplied = true;
+                    DisarmAutomationSession();
                     LoggerInstance.Error($"[NocturneKeyboardInput] Name count row is too short: {nameCountRow.Length}.");
                     return;
                 }
@@ -473,6 +533,7 @@ namespace NocturneKeyboardInput
                     !MatchesUtf16(nameRow, surnameOffset, oldSurname) || !MatchesUtf16(nameRow, givenOffset, oldGivenName))
                 {
                     _finalNamesApplied = true;
+                    DisarmAutomationSession();
                     LoggerInstance.Error($"[NocturneKeyboardInput] Packed name layout validation failed. counts={nameCountRow[0]}/{nameCountRow[1]}, offsets={surnameOffset}/{givenOffset}.");
                     return;
                 }
@@ -486,6 +547,7 @@ namespace NocturneKeyboardInput
                 if (nicknameRow.Length < _nickname.Length * 2)
                 {
                     _finalNamesApplied = true;
+                    DisarmAutomationSession();
                     LoggerInstance.Error($"[NocturneKeyboardInput] Nickname row is too short: {nicknameRow.Length}.");
                     return;
                 }
@@ -498,12 +560,14 @@ namespace NocturneKeyboardInput
                 string observedNickname = frName.frGetCNameString(0) ?? "";
                 _finalNamesApplied = true;
                 LoggerInstance.Msg($"[NocturneKeyboardInput] Final names replaced. Surname=\"{observedSurname}\", GivenName=\"{observedGivenName}\", Nickname=\"{observedNickname}\"");
+                CompleteAutomationSession();
             }
             catch (Exception ex)
             {
                 if (_postNameFrames >= 180)
                 {
                     _finalNamesApplied = true;
+                    DisarmAutomationSession();
                     LogException("Configured name replacement gave up after 180 frames", ex);
                 }
             }
@@ -583,6 +647,11 @@ namespace NocturneKeyboardInput
 
         internal static void RequestOnce() => Interlocked.Exchange(ref _pendingStart, 1);
         internal static void RequestConfirmPair() => Interlocked.Exchange(ref _pendingConfirm, 2);
+        internal static void ClearPending()
+        {
+            Interlocked.Exchange(ref _pendingStart, 0);
+            Interlocked.Exchange(ref _pendingConfirm, 0);
+        }
 
         private static bool ConsumePendingConfirm()
         {

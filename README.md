@@ -76,6 +76,14 @@ dotnet build .\src\NameInputHelper\NameInputHelper.csproj -c Release
 
 調査経緯は[SMT3HD_KEYBOARD_INPUT_DISCOVERY_REPORT_JA.md](SMT3HD_KEYBOARD_INPUT_DISCOVERY_REPORT_JA.md)を参照してください。
 
+## 更新履歴
+
+### v0.18.3
+
+- 主人公名の確定後、自動ダミー入力が先生の名前入力画面へ継続する問題を修正しました。
+- F8で開始した名前入力セッションを`TargetNo`と`EntryMode`で識別し、別の名前入力対象へSTART入力や確認入力を送らないようにしました。
+- 主人公名の置換完了時に、自動入力セッションと保留中の入力要求を明示的に終了するようにしました。
+
 ## ライセンス
 
 [MIT License](LICENSE)
